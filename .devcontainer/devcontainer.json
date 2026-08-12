@@ -1,0 +1,19 @@
+{
+  "name": "pace-partner",
+  "build": {
+    "dockerfile": "Dockerfile",
+    "context": ".."
+  },
+  "workspaceFolder": "/workspaces/pace-partner",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "anthropic.claude-code",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode"
+      ]
+    }
+  },
+  "runArgs": ["--memory=4g", "--cpus=2"],
+  "remoteUser": "node"
+}
