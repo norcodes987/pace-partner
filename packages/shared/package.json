@@ -8,6 +8,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "generate": "prisma generate --schema=prisma/schema.prisma --allow-no-models",
+    "postinstall": "npm run generate",
     "test": "vitest run"
   },
   "dependencies": {

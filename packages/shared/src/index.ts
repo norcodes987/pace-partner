@@ -1,3 +1,3 @@
 export { loadEnv } from "./env.js";
 export type { Env } from "./env.js";
-export { prisma } from "./prisma.js";
+export { getPrisma } from "./prisma.js";
