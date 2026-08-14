@@ -26,11 +26,11 @@ Real Singpass NDI staging requires relying-party onboarding (registered client I
 
 Because the helper is configured entirely via env vars (`SINGPASS_OIDC_CONFIG_URL`, client ID, redirect URI, keys), switching from mockpass to real NDI staging later is a config change, not a code change — the route handlers don't know which one they're talking to.
 
-`mockpass` joins `docker-compose.yml` as a fourth local service (port 5156), configured with `SP_RP_JWKS_ENDPOINT` pointing at the auth service's own `/.well-known/jwks.json`.
+`mockpass` joins `docker-compose.yml` as a fourth local service (port 5156, the `opengovsg/mockpass` image), using its own bundled default keyset — no `SP_RP_JWKS_ENDPOINT` configuration needed.
 
 ### Local dev key material
 
-The OIDC flow needs an EC keypair: one key signs the client-assertion JWT, the other decrypts the ID-token JWE. A one-time setup script (`services/auth/scripts/generate-dev-keys.ts`) generates this pair into `services/auth/keys/` (gitignored — never real NDI keys, regenerable by anyone via the script). `services/auth` serves the public half at `GET /.well-known/jwks.json` for mockpass to fetch.
+The OIDC flow needs an EC keypair: one key signs the client-assertion JWT, the other decrypts the ID-token JWE. mockpass ships a bundled, publicly-known static test keypair (`static/certs/oidc-v2-rp-secret.json`) that it trusts by default without any extra configuration. `services/auth` vendors the private half of that same keypair (as local, non-secret dev fixtures under `services/auth/keys/`, sourced from the mockpass repo) rather than generating its own — no key-generation script and no `/.well-known/jwks.json` endpoint are needed this phase. Real NDI staging (later) requires a real, registered keypair and relying-party onboarding — this vendored key is dev-only and must never be reused there.
 
 ## Data Model
 
