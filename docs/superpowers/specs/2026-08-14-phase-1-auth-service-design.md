@@ -45,7 +45,7 @@ model User {
 }
 ```
 
-`singpassSub` is the pairwise identifier NDI issues per relying party — stable per user, not a raw NRIC. No other fields this phase.
+The verified ID token's `sub` claim decodes (via `extractNricAndUuidFromPayload`) to both a raw NRIC and a stable per-user `uuid`. Only `uuid` is persisted as `singpassSub` — the `nric` value is used transiently during login and never stored, to avoid taking on NRIC-handling/PDPA obligations before there's a real product need for it. No other fields this phase.
 
 ## Routes
 
