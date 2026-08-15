@@ -27,5 +27,15 @@ services:
       - "5672:5672"
       - "15672:15672"
 
+  mockpass:
+    image: opengovsg/mockpass:latest
+    restart: unless-stopped
+    environment:
+      MOCKPASS_PORT: 5156
+      SHOW_LOGIN_PAGE: "false"
+      MOCKPASS_NRIC: S8979373D
+    ports:
+      - "5156:5156"
+
 volumes:
   postgres_data:
