@@ -1,11 +1,17 @@
 import { Router } from "express";
 import { generators } from "openid-client";
+import { z } from "zod";
 import { getPrisma } from "@pace-partner/shared";
 import type { AuthEnv } from "../env.js";
 import { signSessionToken } from "../jwt.js";
 import { requireAuth, type AuthedRequest } from "../middleware/requireAuth.js";
 import { createSingpassClient } from "../singpassClient.js";
 import { StateStore } from "../stateStore.js";
+
+const callbackQuerySchema = z.object({
+  code: z.string(),
+  state: z.string(),
+});
 
 export function createSingpassAuthRouter(env: AuthEnv): Router {
   const router = Router();
@@ -18,26 +24,33 @@ export function createSingpassAuthRouter(env: AuthEnv): Router {
   const stateStore = new StateStore();
 
   router.get("/singpass/login", async (_req, res) => {
-    const state = generators.state();
-    const nonce = generators.nonce();
-    const codeVerifier = generators.codeVerifier();
-    stateStore.save(state, { nonce, codeVerifier });
+    try {
+      const state = generators.state();
+      const nonce = generators.nonce();
+      const codeVerifier = generators.codeVerifier();
+      stateStore.save(state, { nonce, codeVerifier });
 
-    const authorizationUrl = await singpassClient.constructAuthorizationUrlV2({
-      state,
-      nonce,
-      userInfoScope: [],
-      codeVerifier,
-    });
-    res.redirect(authorizationUrl);
+      const authorizationUrl = await singpassClient.constructAuthorizationUrlV2({
+        state,
+        nonce,
+        userInfoScope: [],
+        codeVerifier,
+      });
+      res.redirect(authorizationUrl);
+    } catch (error) {
+      res.status(502).json({
+        error: error instanceof Error ? error.message : "Failed to construct Singpass authorization URL",
+      });
+    }
   });
 
   router.get("/singpass/callback", async (req, res) => {
-    const { code, state } = req.query;
-    if (typeof code !== "string" || typeof state !== "string") {
+    const parseResult = callbackQuerySchema.safeParse(req.query);
+    if (!parseResult.success) {
       res.status(400).json({ error: "Missing code or state" });
       return;
     }
+    const { code, state } = parseResult.data;
 
     const stored = stateStore.consume(state);
     if (!stored) {
@@ -70,12 +83,18 @@ export function createSingpassAuthRouter(env: AuthEnv): Router {
   });
 
   router.get("/me", requireAuth(env.JWT_SECRET), async (req: AuthedRequest, res) => {
-    const user = await prisma.user.findUnique({ where: { id: req.userId } });
-    if (!user) {
-      res.status(401).json({ error: "User not found" });
-      return;
+    try {
+      const user = await prisma.user.findUnique({ where: { id: req.userId } });
+      if (!user) {
+        res.status(401).json({ error: "User not found" });
+        return;
+      }
+      res.json({ id: user.id, singpassSub: user.singpassSub, createdAt: user.createdAt });
+    } catch (error) {
+      res.status(500).json({
+        error: error instanceof Error ? error.message : "Failed to look up user",
+      });
     }
-    res.json({ id: user.id, singpassSub: user.singpassSub, createdAt: user.createdAt });
   });
 
   return router;
