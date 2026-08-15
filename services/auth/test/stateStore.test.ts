@@ -23,4 +23,18 @@ describe("StateStore", () => {
     now += 6 * 60 * 1000; // 6 minutes later, past the 5-minute TTL
     expect(store.consume("state-1")).toBeUndefined();
   });
+
+  it("evicts abandoned (never-consumed) entries once they are past TTL, on the next save", () => {
+    let now = 1_000_000;
+    const store = new StateStore(() => now);
+    store.save("abandoned-1", { nonce: "nonce-1", codeVerifier: "verifier-1" });
+    store.save("abandoned-2", { nonce: "nonce-2", codeVerifier: "verifier-2" });
+    expect(store.size).toBe(2);
+
+    now += 6 * 60 * 1000; // 6 minutes later, past the 5-minute TTL; neither entry was consumed
+    store.save("state-3", { nonce: "nonce-3", codeVerifier: "verifier-3" });
+
+    // The two abandoned entries should have been swept during save(), leaving only the new one.
+    expect(store.size).toBe(1);
+  });
 });

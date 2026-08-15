@@ -11,8 +11,23 @@ export class StateStore {
 
   constructor(private readonly now: () => number = Date.now) {}
 
+  /** Number of entries currently held, including any not yet swept. Exposed for tests. */
+  get size(): number {
+    return this.store.size;
+  }
+
   save(state: string, entry: { nonce: string; codeVerifier: string }): void {
+    this.evictExpired();
     this.store.set(state, { ...entry, expiresAt: this.now() + TTL_MS });
+  }
+
+  private evictExpired(): void {
+    const now = this.now();
+    for (const [key, value] of this.store) {
+      if (value.expiresAt < now) {
+        this.store.delete(key);
+      }
+    }
   }
 
   consume(state: string): { nonce: string; codeVerifier: string } | undefined {

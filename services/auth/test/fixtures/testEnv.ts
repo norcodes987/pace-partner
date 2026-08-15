@@ -1,7 +1,10 @@
 import type { AuthEnv } from "../../src/env.js";
 
 export const testEnv: AuthEnv = {
-  DATABASE_URL: "postgresql://user:pass@localhost:5432/db",
+  // Matches .env.example's DATABASE_URL: the real Postgres instance this sandbox runs
+  // against (Task 1's migration applied). Fix 1 threads this through to getPrisma(), so
+  // it must point at a reachable database rather than a placeholder.
+  DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/pace_partner",
   REDIS_URL: "redis://localhost:6379",
   RABBITMQ_URL: "amqp://guest:guest@localhost:5672",
   JWT_SECRET: "test-secret",

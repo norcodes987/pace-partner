@@ -15,7 +15,7 @@ const callbackQuerySchema = z.object({
 
 export function createSingpassAuthRouter(env: AuthEnv): Router {
   const router = Router();
-  const prisma = getPrisma();
+  const prisma = getPrisma(env.DATABASE_URL);
   const singpassClient = createSingpassClient({
     oidcConfigUrl: env.SINGPASS_OIDC_CONFIG_URL,
     clientId: env.SINGPASS_CLIENT_ID,
@@ -38,9 +38,8 @@ export function createSingpassAuthRouter(env: AuthEnv): Router {
       });
       res.redirect(authorizationUrl);
     } catch (error) {
-      res.status(502).json({
-        error: error instanceof Error ? error.message : "Failed to construct Singpass authorization URL",
-      });
+      console.error(error);
+      res.status(502).json({ error: "Singpass authorization unavailable" });
     }
   });
 
@@ -58,14 +57,22 @@ export function createSingpassAuthRouter(env: AuthEnv): Router {
       return;
     }
 
+    let payload: Awaited<ReturnType<typeof singpassClient.getIdTokenPayload>>;
     try {
       const tokens = await singpassClient.getTokens(code, stored.codeVerifier);
-      const payload = await singpassClient.getIdTokenPayload(tokens);
-      if (payload.nonce !== stored.nonce) {
-        res.status(400).json({ error: "Nonce mismatch" });
-        return;
-      }
+      payload = await singpassClient.getIdTokenPayload(tokens);
+    } catch (error) {
+      console.error(error);
+      res.status(502).json({ error: "Token exchange failed" });
+      return;
+    }
 
+    if (payload.nonce !== stored.nonce) {
+      res.status(400).json({ error: "Nonce mismatch" });
+      return;
+    }
+
+    try {
       const { uuid } = singpassClient.extractNricAndUuidFromPayload(payload);
       const user = await prisma.user.upsert({
         where: { singpassSub: uuid },
@@ -76,9 +83,8 @@ export function createSingpassAuthRouter(env: AuthEnv): Router {
       const accessToken = signSessionToken(user.id, env.JWT_SECRET);
       res.json({ accessToken, user: { id: user.id } });
     } catch (error) {
-      res.status(502).json({
-        error: error instanceof Error ? error.message : "Singpass token exchange failed",
-      });
+      console.error(error);
+      res.status(500).json({ error: "Internal error" });
     }
   });
 
@@ -91,9 +97,8 @@ export function createSingpassAuthRouter(env: AuthEnv): Router {
       }
       res.json({ id: user.id, singpassSub: user.singpassSub, createdAt: user.createdAt });
     } catch (error) {
-      res.status(500).json({
-        error: error instanceof Error ? error.message : "Failed to look up user",
-      });
+      console.error(error);
+      res.status(500).json({ error: "Internal error" });
     }
   });
 

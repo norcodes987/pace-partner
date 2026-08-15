@@ -2,9 +2,9 @@ import { PrismaClient } from "@prisma/client";
 
 let client: PrismaClient | undefined;
 
-export function getPrisma(): PrismaClient {
+export function getPrisma(url?: string): PrismaClient {
   if (!client) {
-    client = new PrismaClient();
+    client = new PrismaClient(url ? { datasources: { db: { url } } } : undefined);
   }
   return client;
 }
