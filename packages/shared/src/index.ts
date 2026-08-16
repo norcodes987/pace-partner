@@ -5,3 +5,5 @@ export { verifySessionToken } from "./auth/verifyJwt.js";
 export type { SessionTokenPayload } from "./auth/verifyJwt.js";
 export { requireAuth } from "./auth/requireAuth.js";
 export type { AuthedRequest } from "./auth/requireAuth.js";
+export { MRT_STATIONS, mrtStationSchema } from "./mrtStations.js";
+export type { MrtStation } from "./mrtStations.js";

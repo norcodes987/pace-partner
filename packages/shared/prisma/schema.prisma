@@ -8,8 +8,51 @@ datasource db {
 }
 
 model User {
-  id          String   @id @default(uuid())
-  singpassSub String   @unique
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id             String          @id @default(uuid())
+  singpassSub    String          @unique
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  runnerProfile  RunnerProfile?
+  swipesGiven    Swipe[]         @relation("SwipeInitiator")
+  swipesReceived Swipe[]         @relation("SwipeTarget")
+  matchesAsA     Match[]         @relation("MatchUserA")
+  matchesAsB     Match[]         @relation("MatchUserB")
+}
+
+model RunnerProfile {
+  id               String   @id @default(uuid())
+  userId           String   @unique
+  user             User     @relation(fields: [userId], references: [id])
+  paceSecondsPerKm Int
+  mrtStations      String[]
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+enum SwipeDecision {
+  ACCEPT
+  PASS
+}
+
+model Swipe {
+  id           String        @id @default(uuid())
+  userId       String
+  user         User          @relation("SwipeInitiator", fields: [userId], references: [id])
+  targetUserId String
+  target       User          @relation("SwipeTarget", fields: [targetUserId], references: [id])
+  decision     SwipeDecision
+  createdAt    DateTime      @default(now())
+
+  @@unique([userId, targetUserId])
+}
+
+model Match {
+  id        String   @id @default(uuid())
+  userAId   String
+  userA     User     @relation("MatchUserA", fields: [userAId], references: [id])
+  userBId   String
+  userB     User     @relation("MatchUserB", fields: [userBId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@unique([userAId, userBId])
 }
