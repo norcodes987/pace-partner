@@ -110,3 +110,46 @@ describe("POST /matching/candidates/:userId/swipe", () => {
     expect([userA.id, userB.id]).toContain(response.body.match.userBId);
   });
 });
+
+describe("POST /matching/candidates/:userId/swipe — concurrent writes", () => {
+  it("handles two simultaneous identical swipes without a 500 (one 201, one 409)", async () => {
+    const user = await createTestUser(prisma);
+    const token = signTestToken(user.id, testEnv.JWT_SECRET);
+    const target = await createTestUser(prisma);
+
+    const [responseA, responseB] = await Promise.all([
+      request(app)
+        .post(`/matching/candidates/${target.id}/swipe`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({ decision: "PASS" }),
+      request(app)
+        .post(`/matching/candidates/${target.id}/swipe`)
+        .set("Authorization", `Bearer ${token}`)
+        .send({ decision: "PASS" }),
+    ]);
+
+    const statuses = [responseA.status, responseB.status].sort();
+    expect(statuses).toEqual([201, 409]);
+  });
+
+  it("handles two simultaneous mutual ACCEPTs without a 500 (both succeed with the same match)", async () => {
+    const userA = await createTestUser(prisma);
+    const tokenA = signTestToken(userA.id, testEnv.JWT_SECRET);
+    const userB = await createTestUser(prisma);
+    const tokenB = signTestToken(userB.id, testEnv.JWT_SECRET);
+
+    const [responseA, responseB] = await Promise.all([
+      request(app)
+        .post(`/matching/candidates/${userB.id}/swipe`)
+        .set("Authorization", `Bearer ${tokenA}`)
+        .send({ decision: "ACCEPT" }),
+      request(app)
+        .post(`/matching/candidates/${userA.id}/swipe`)
+        .set("Authorization", `Bearer ${tokenB}`)
+        .send({ decision: "ACCEPT" }),
+    ]);
+
+    expect(responseA.status).toBe(201);
+    expect(responseB.status).toBe(201);
+  });
+});

@@ -1,5 +1,7 @@
 import { Router } from "express";
-import { getPrisma, type AuthedRequest } from "@pace-partner/shared";
+import { getPrisma, withUser } from "@pace-partner/shared";
+import { Prisma } from "@prisma/client";
+import type { Match } from "@prisma/client";
 import { z } from "zod";
 import type { MatchingEnv } from "../env.js";
 
@@ -10,12 +12,8 @@ export function createCandidatesRouter(env: MatchingEnv): Router {
   const router = Router();
   const prisma = getPrisma(env.DATABASE_URL);
 
-  router.get("/candidates", async (req: AuthedRequest, res) => {
+  router.get("/candidates", withUser(async (req, res) => {
     const userId = req.userId;
-    if (!userId) {
-      res.status(401).json({ error: "Missing or invalid Authorization header" });
-      return;
-    }
 
     try {
       const ownProfile = await prisma.runnerProfile.findUnique({ where: { userId } });
@@ -39,6 +37,7 @@ export function createCandidatesRouter(env: MatchingEnv): Router {
           },
           mrtStations: { hasSome: ownProfile.mrtStations },
         },
+        orderBy: { createdAt: "desc" },
         take: CANDIDATE_LIMIT,
       });
 
@@ -53,18 +52,14 @@ export function createCandidatesRouter(env: MatchingEnv): Router {
       console.error(error);
       res.status(500).json({ error: "Internal error" });
     }
-  });
+  }));
 
   const swipeBodySchema = z.object({
     decision: z.enum(["ACCEPT", "PASS"]),
   });
 
-  router.post("/candidates/:userId/swipe", async (req: AuthedRequest, res) => {
+  router.post("/candidates/:userId/swipe", withUser(async (req, res) => {
     const userId = req.userId;
-    if (!userId) {
-      res.status(401).json({ error: "Missing or invalid Authorization header" });
-      return;
-    }
 
     const targetUserId = req.params.userId;
     if (targetUserId === userId) {
@@ -94,25 +89,58 @@ export function createCandidatesRouter(env: MatchingEnv): Router {
         return;
       }
 
-      const swipe = await prisma.swipe.create({ data: { userId, targetUserId, decision } });
+      const [userAId, userBId] = [userId, targetUserId].sort();
 
-      let match = null;
-      if (decision === "ACCEPT") {
-        const reciprocal = await prisma.swipe.findUnique({
-          where: { userId_targetUserId: { userId: targetUserId, targetUserId: userId } },
+      try {
+        const result = await prisma.$transaction(async (tx) => {
+          const swipe = await tx.swipe.create({ data: { userId, targetUserId, decision } });
+
+          let match: Match | null = null;
+          if (decision === "ACCEPT") {
+            const reciprocal = await tx.swipe.findUnique({
+              where: { userId_targetUserId: { userId: targetUserId, targetUserId: userId } },
+            });
+            if (reciprocal && reciprocal.decision === "ACCEPT") {
+              match = await tx.match.create({ data: { userAId, userBId } });
+            }
+          }
+
+          return { swipe, match };
         });
-        if (reciprocal && reciprocal.decision === "ACCEPT") {
-          const [userAId, userBId] = [userId, targetUserId].sort();
-          match = await prisma.match.create({ data: { userAId, userBId } });
-        }
-      }
 
-      res.status(201).json({ swipe, match });
+        res.status(201).json(result);
+      } catch (transactionError) {
+        if (
+          transactionError instanceof Prisma.PrismaClientKnownRequestError &&
+          transactionError.code === "P2002"
+        ) {
+          const rawTarget = transactionError.meta?.target;
+          const targetStr = Array.isArray(rawTarget) ? rawTarget.join(",") : String(rawTarget ?? "");
+          const isSwipeConflict = /targetuserid/i.test(targetStr);
+
+          if (isSwipeConflict) {
+            res.status(409).json({ error: "Already swiped on this candidate" });
+            return;
+          }
+
+          // Match already exists — the other side's concurrent accept created it first.
+          // The swipe itself succeeded, so re-fetch the match and report success.
+          const existingMatch = await prisma.match.findUnique({
+            where: { userAId_userBId: { userAId, userBId } },
+          });
+          const swipe = await prisma.swipe.findUnique({
+            where: { userId_targetUserId: { userId, targetUserId } },
+          });
+          res.status(201).json({ swipe, match: existingMatch });
+          return;
+        }
+        throw transactionError;
+      }
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: "Internal error" });
     }
-  });
+  }));
 
   return router;
 }

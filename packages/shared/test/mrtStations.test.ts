@@ -13,4 +13,8 @@ describe("mrtStationSchema", () => {
   it("contains no duplicates", () => {
     expect(new Set(MRT_STATIONS).size).toBe(MRT_STATIONS.length);
   });
+
+  it("contains the full set of operating stations", () => {
+    expect(MRT_STATIONS.length).toBe(183);
+  });
 });

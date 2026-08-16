@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { z } from "zod";
-import { getPrisma, mrtStationSchema, type AuthedRequest } from "@pace-partner/shared";
+import { getPrisma, mrtStationSchema, withUser } from "@pace-partner/shared";
 import type { MatchingEnv } from "../env.js";
 
 const MIN_PACE_SECONDS_PER_KM = 180;
@@ -15,12 +15,8 @@ export function createProfileRouter(env: MatchingEnv): Router {
   const router = Router();
   const prisma = getPrisma(env.DATABASE_URL);
 
-  router.put("/profile", async (req: AuthedRequest, res) => {
+  router.put("/profile", withUser(async (req, res) => {
     const userId = req.userId;
-    if (!userId) {
-      res.status(401).json({ error: "Missing or invalid Authorization header" });
-      return;
-    }
 
     const parseResult = profileBodySchema.safeParse(req.body);
     if (!parseResult.success) {
@@ -40,14 +36,10 @@ export function createProfileRouter(env: MatchingEnv): Router {
       console.error(error);
       res.status(500).json({ error: "Internal error" });
     }
-  });
+  }));
 
-  router.get("/profile", async (req: AuthedRequest, res) => {
+  router.get("/profile", withUser(async (req, res) => {
     const userId = req.userId;
-    if (!userId) {
-      res.status(401).json({ error: "Missing or invalid Authorization header" });
-      return;
-    }
 
     try {
       const profile = await prisma.runnerProfile.findUnique({ where: { userId } });
@@ -60,7 +52,7 @@ export function createProfileRouter(env: MatchingEnv): Router {
       console.error(error);
       res.status(500).json({ error: "Internal error" });
     }
-  });
+  }));
 
   return router;
 }

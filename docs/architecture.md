@@ -20,7 +20,7 @@ Every service shares one Postgres database via a single `packages/shared/prisma/
 ## Services
 
 - **auth** — Owns identity only. Runs the Singpass OIDC flow (TEST/mockpass environment; see `docs/singpass-integration.md`), issues a session JWT on successful login, and exposes `/auth/me` for looking up the current user. Does not own profile data (pace, MRT stations) or anything past proving "this is a real, unique Singpass holder." *Status: done (Phase 1).*
-- **matching** — Owns runner profiles and match formation. A user sets their pace and selected MRT stations, browses candidates filtered by the compatibility rule below, and accepts or passes on each; a match forms only when both sides accept. Gates chat access to mutual matches. *Status: designed (Phase 2 spec), not yet implemented.*
+- **matching** — Owns runner profiles and match formation. A user sets their pace and selected MRT stations, browses candidates filtered by the compatibility rule below, and accepts or passes on each; a match forms only when both sides accept. Gates chat access to mutual matches. *Status: done (Phase 2).*
 - **chat** — Owns real-time messaging between matched users, via Socket.IO. Messages are stored in Redis with a 24h TTL, not Postgres — chat history is intentionally ephemeral. *Status: not yet designed (Phase 3).*
 - **mobile** — The user-facing Expo app covering the above flows: Singpass login, profile setup, candidate browsing/swiping, and chat. Visual direction follows `ui-inspo.png` (palette, typography, components). *Status: scaffolded only (Phase 0); no real screens yet (Phase 4).*
 
@@ -72,6 +72,6 @@ This is the scope boundary CLAUDE.md rule 7 ("don't add features outside the MVP
 
 - Phase 0 — Shared foundation. Done. [`docs/superpowers/specs/2026-08-12-phase-0-shared-foundation-design.md`](superpowers/specs/2026-08-12-phase-0-shared-foundation-design.md)
 - Phase 1 — Auth service. Done. [`docs/superpowers/specs/2026-08-14-phase-1-auth-service-design.md`](superpowers/specs/2026-08-14-phase-1-auth-service-design.md)
-- Phase 2 — Matching service. Designed, not yet implemented. [`docs/superpowers/specs/2026-08-16-phase-2-matching-service-design.md`](superpowers/specs/2026-08-16-phase-2-matching-service-design.md)
+- Phase 2 — Matching service. Done. [`docs/superpowers/specs/2026-08-16-phase-2-matching-service-design.md`](superpowers/specs/2026-08-16-phase-2-matching-service-design.md)
 - Phase 3 — Chat service (Socket.IO + Redis). Not yet designed.
 - Phase 4 — Mobile app (Expo, screens per `ui-inspo.png`). Not yet designed.

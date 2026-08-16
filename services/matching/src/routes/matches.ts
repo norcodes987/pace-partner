@@ -1,21 +1,18 @@
 import { Router } from "express";
-import { getPrisma, type AuthedRequest } from "@pace-partner/shared";
+import { getPrisma, withUser } from "@pace-partner/shared";
 import type { MatchingEnv } from "../env.js";
 
 export function createMatchesRouter(env: MatchingEnv): Router {
   const router = Router();
   const prisma = getPrisma(env.DATABASE_URL);
 
-  router.get("/matches", async (req: AuthedRequest, res) => {
+  router.get("/matches", withUser(async (req, res) => {
     const userId = req.userId;
-    if (!userId) {
-      res.status(401).json({ error: "Missing or invalid Authorization header" });
-      return;
-    }
 
     try {
       const matches = await prisma.match.findMany({
         where: { OR: [{ userAId: userId }, { userBId: userId }] },
+        orderBy: { createdAt: "desc" },
       });
       res.json(
         matches.map((match) => ({
@@ -28,7 +25,7 @@ export function createMatchesRouter(env: MatchingEnv): Router {
       console.error(error);
       res.status(500).json({ error: "Internal error" });
     }
-  });
+  }));
 
   return router;
 }

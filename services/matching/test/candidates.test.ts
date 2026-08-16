@@ -87,4 +87,47 @@ describe("GET /matching/candidates", () => {
     expect(response.status).toBe(200);
     expect(response.body.map((c: { userId: string }) => c.userId)).not.toContain(caller.id);
   });
+
+  it("excludes a candidate the caller has already swiped on", async () => {
+    const caller = await createTestUser(prisma);
+    const callerToken = signTestToken(caller.id, testEnv.JWT_SECRET);
+    await setProfile(callerToken, 330, ["Bishan"]);
+
+    const candidate = await createTestUser(prisma);
+    const candidateToken = signTestToken(candidate.id, testEnv.JWT_SECRET);
+    await setProfile(candidateToken, 330, ["Bishan"]);
+
+    await request(app)
+      .post(`/matching/candidates/${candidate.id}/swipe`)
+      .set("Authorization", `Bearer ${callerToken}`)
+      .send({ decision: "PASS" });
+
+    const response = await request(app)
+      .get("/matching/candidates")
+      .set("Authorization", `Bearer ${callerToken}`);
+    expect(response.status).toBe(200);
+    expect(response.body.map((c: { userId: string }) => c.userId)).not.toContain(candidate.id);
+  });
+
+  it("includes a candidate exactly at the +/-30s pace boundary and excludes one second past it", async () => {
+    const caller = await createTestUser(prisma);
+    const callerToken = signTestToken(caller.id, testEnv.JWT_SECRET);
+    await setProfile(callerToken, 330, ["Bishan"]);
+
+    const atBoundary = await createTestUser(prisma);
+    const atBoundaryToken = signTestToken(atBoundary.id, testEnv.JWT_SECRET);
+    await setProfile(atBoundaryToken, 360, ["Bishan"]);
+
+    const pastBoundary = await createTestUser(prisma);
+    const pastBoundaryToken = signTestToken(pastBoundary.id, testEnv.JWT_SECRET);
+    await setProfile(pastBoundaryToken, 361, ["Bishan"]);
+
+    const response = await request(app)
+      .get("/matching/candidates")
+      .set("Authorization", `Bearer ${callerToken}`);
+    expect(response.status).toBe(200);
+    const ids = response.body.map((c: { userId: string }) => c.userId);
+    expect(ids).toContain(atBoundary.id);
+    expect(ids).not.toContain(pastBoundary.id);
+  });
 });
