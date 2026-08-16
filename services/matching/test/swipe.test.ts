@@ -132,7 +132,7 @@ describe("POST /matching/candidates/:userId/swipe — concurrent writes", () => 
     expect(statuses).toEqual([201, 409]);
   });
 
-  it("handles two simultaneous mutual ACCEPTs without a 500 (both succeed with the same match)", async () => {
+  it("handles two simultaneous mutual ACCEPTs without a 500 and never loses the match", async () => {
     const userA = await createTestUser(prisma);
     const tokenA = signTestToken(userA.id, testEnv.JWT_SECRET);
     const userB = await createTestUser(prisma);
@@ -151,5 +151,48 @@ describe("POST /matching/candidates/:userId/swipe — concurrent writes", () => 
 
     expect(responseA.status).toBe(201);
     expect(responseB.status).toBe(201);
+
+    // Under Postgres SERIALIZABLE, this is a classic write-skew shape: whichever
+    // transaction's snapshot is taken first can legitimately commit before the other
+    // side's swipe exists, and will correctly report match: null for THAT response —
+    // it did not lose a race, it genuinely observed no reciprocal yet. The other
+    // transaction either sees the reciprocal directly, or gets aborted with P2034 and
+    // retries into finding/creating it. So at most one of the two HTTP responses can
+    // legitimately have a null match; it is impossible under correct Postgres semantics
+    // for BOTH responses to always show non-null (that would require Postgres to
+    // retroactively invalidate an already-committed transaction, which it never does).
+    //
+    // The property that actually matters — the one the pre-fix bug violated — is that
+    // the match is never permanently lost: at least one response must carry it, and a
+    // Match row must actually exist afterward for the pair. Under the old READ COMMITTED
+    // + no-retry bug, BOTH responses came back with match: null AND no Match row was ever
+    // created, permanently, because both Swipe rows already existed and any retry hit the
+    // 409 pre-check forever. This assertion fails if that regresses.
+    const matches = [responseA.body.match, responseB.body.match];
+    expect(matches.some((match) => match !== null)).toBe(true);
+
+    const nonNullMatches = matches.filter((match) => match !== null);
+    for (const match of nonNullMatches) {
+      expect([userA.id, userB.id]).toContain(match.userAId);
+      expect([userA.id, userB.id]).toContain(match.userBId);
+    }
+    if (nonNullMatches.length === 2) {
+      expect(nonNullMatches[0].id).toBe(nonNullMatches[1].id);
+    }
+
+    const [dbUserAId, dbUserBId] = [userA.id, userB.id].sort();
+    const persistedMatch = await prisma.match.findUnique({
+      where: { userAId_userBId: { userAId: dbUserAId, userBId: dbUserBId } },
+    });
+    expect(persistedMatch).not.toBeNull();
+
+    const swipeA = await prisma.swipe.findUnique({
+      where: { userId_targetUserId: { userId: userA.id, targetUserId: userB.id } },
+    });
+    const swipeB = await prisma.swipe.findUnique({
+      where: { userId_targetUserId: { userId: userB.id, targetUserId: userA.id } },
+    });
+    expect(swipeA?.decision).toBe("ACCEPT");
+    expect(swipeB?.decision).toBe("ACCEPT");
   });
 });

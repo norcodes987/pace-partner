@@ -91,51 +91,74 @@ export function createCandidatesRouter(env: MatchingEnv): Router {
 
       const [userAId, userBId] = [userId, targetUserId].sort();
 
-      try {
-        const result = await prisma.$transaction(async (tx) => {
-          const swipe = await tx.swipe.create({ data: { userId, targetUserId, decision } });
+      const MAX_SERIALIZATION_RETRIES = 3;
+      let result: { swipe: unknown; match: Match | null } | undefined;
 
-          let match: Match | null = null;
-          if (decision === "ACCEPT") {
-            const reciprocal = await tx.swipe.findUnique({
-              where: { userId_targetUserId: { userId: targetUserId, targetUserId: userId } },
-            });
-            if (reciprocal && reciprocal.decision === "ACCEPT") {
-              match = await tx.match.create({ data: { userAId, userBId } });
+      for (let attempt = 1; attempt <= MAX_SERIALIZATION_RETRIES; attempt++) {
+        try {
+          result = await prisma.$transaction(
+            async (tx) => {
+              const swipe = await tx.swipe.create({ data: { userId, targetUserId, decision } });
+
+              let match: Match | null = null;
+              if (decision === "ACCEPT") {
+                const reciprocal = await tx.swipe.findUnique({
+                  where: { userId_targetUserId: { userId: targetUserId, targetUserId: userId } },
+                });
+                if (reciprocal && reciprocal.decision === "ACCEPT") {
+                  match = await tx.match.create({ data: { userAId, userBId } });
+                }
+              }
+
+              return { swipe, match };
+            },
+            { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+          );
+          break;
+        } catch (transactionError) {
+          if (
+            transactionError instanceof Prisma.PrismaClientKnownRequestError &&
+            transactionError.code === "P2034"
+          ) {
+            // Serialization conflict — Postgres detected the concurrent mutual-accept
+            // race and aborted this transaction. Retry from scratch: the re-read will
+            // now see the other side's committed swipe, if any.
+            if (attempt === MAX_SERIALIZATION_RETRIES) {
+              throw transactionError;
             }
+            continue;
           }
 
-          return { swipe, match };
-        });
+          if (
+            transactionError instanceof Prisma.PrismaClientKnownRequestError &&
+            transactionError.code === "P2002"
+          ) {
+            const rawTarget = transactionError.meta?.target;
+            const targetStr = Array.isArray(rawTarget) ? rawTarget.join(",") : String(rawTarget ?? "");
+            const isSwipeConflict = /targetuserid/i.test(targetStr);
 
-        res.status(201).json(result);
-      } catch (transactionError) {
-        if (
-          transactionError instanceof Prisma.PrismaClientKnownRequestError &&
-          transactionError.code === "P2002"
-        ) {
-          const rawTarget = transactionError.meta?.target;
-          const targetStr = Array.isArray(rawTarget) ? rawTarget.join(",") : String(rawTarget ?? "");
-          const isSwipeConflict = /targetuserid/i.test(targetStr);
+            if (isSwipeConflict) {
+              res.status(409).json({ error: "Already swiped on this candidate" });
+              return;
+            }
 
-          if (isSwipeConflict) {
-            res.status(409).json({ error: "Already swiped on this candidate" });
+            // Match already exists — the other side's concurrent accept created it first.
+            // The swipe itself succeeded, so re-fetch the match and report success.
+            const existingMatch = await prisma.match.findUnique({
+              where: { userAId_userBId: { userAId, userBId } },
+            });
+            const swipe = await prisma.swipe.findUnique({
+              where: { userId_targetUserId: { userId, targetUserId } },
+            });
+            res.status(201).json({ swipe, match: existingMatch });
             return;
           }
 
-          // Match already exists — the other side's concurrent accept created it first.
-          // The swipe itself succeeded, so re-fetch the match and report success.
-          const existingMatch = await prisma.match.findUnique({
-            where: { userAId_userBId: { userAId, userBId } },
-          });
-          const swipe = await prisma.swipe.findUnique({
-            where: { userId_targetUserId: { userId, targetUserId } },
-          });
-          res.status(201).json({ swipe, match: existingMatch });
-          return;
+          throw transactionError;
         }
-        throw transactionError;
       }
+
+      res.status(201).json(result);
     } catch (error) {
       console.error(error);
       res.status(500).json({ error: "Internal error" });
