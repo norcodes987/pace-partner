@@ -4,7 +4,7 @@ import { z } from "zod";
 import { getPrisma } from "@pace-partner/shared";
 import type { AuthEnv } from "../env.js";
 import { signSessionToken } from "../jwt.js";
-import { requireAuth, type AuthedRequest } from "../middleware/requireAuth.js";
+import { requireAuth, type AuthedRequest } from "@pace-partner/shared";
 import { createSingpassClient } from "../singpassClient.js";
 import { StateStore } from "../stateStore.js";
 

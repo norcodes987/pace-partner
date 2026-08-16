@@ -1,8 +1,8 @@
 import express from "express";
+import jwt from "jsonwebtoken";
 import request from "supertest";
 import { describe, expect, it } from "vitest";
-import { signSessionToken } from "../src/jwt.js";
-import { requireAuth, type AuthedRequest } from "../src/middleware/requireAuth.js";
+import { requireAuth, type AuthedRequest } from "../../src/auth/requireAuth.js";
 
 function buildTestApp(secret: string) {
   const app = express();
@@ -26,7 +26,7 @@ describe("requireAuth", () => {
   });
 
   it("passes through with a valid token and sets req.userId", async () => {
-    const token = signSessionToken("user-123", "test-secret");
+    const token = jwt.sign({ sub: "user-123" }, "test-secret", { expiresIn: "1h" });
     const response = await request(buildTestApp("test-secret"))
       .get("/protected")
       .set("Authorization", `Bearer ${token}`);
